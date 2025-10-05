@@ -31,6 +31,7 @@ model User {
   transactions  Transaction[]
   impact        UserImpact[]
   notifications Notification[]
+  subscriptions Subscription[]
 
   // Role-based access
   role          UserRole  @default(INDIVIDUAL)
@@ -170,6 +171,7 @@ model CarbonProject {
   reviews          ProjectReview[]
   transactions     Transaction[]
   verifications    ProjectVerification[]
+  subscriptions    Subscription[]
 
   @@map("carbon_projects")
 }
@@ -329,6 +331,44 @@ model Notification {
   @@map("notifications")
 }
 
+model Subscription {
+  id                   String            @id @default(cuid())
+  userId               String
+  stripeSubscriptionId String            @unique
+  planId               String
+  amount               Float
+  frequency            SubscriptionFrequency
+  projectId            String?
+  status               SubscriptionStatus @default(PENDING)
+  nextBillingDate       DateTime
+  createdAt            DateTime          @default(now())
+  updatedAt            DateTime          @updatedAt
+
+  user    User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project CarbonProject? @relation(fields: [projectId], references: [id])
+
+  @@map("subscriptions")
+}
+
+model RetirementCertificate {
+  id               String   @id @default(cuid())
+  creditId         String
+  userId           String
+  projectId        String
+  retirementDate   DateTime
+  reason           String
+  certificateNumber String  @unique
+  serialNumber     String
+  vintage          Int
+  quantity         Float
+  projectTitle     String
+  projectType      String
+  projectLocation  String
+  createdAt        DateTime @default(now())
+
+  @@map("retirement_certificates")
+}
+
 // Enums
 enum UserRole {
   INDIVIDUAL
@@ -446,4 +486,18 @@ enum NotificationType {
   SYSTEM_ANNOUNCEMENT
   PAYMENT_RECEIPT
   IMPACT_MILESTONE
+}
+
+enum SubscriptionFrequency {
+  MONTHLY
+  QUARTERLY
+  YEARLY
+}
+
+enum SubscriptionStatus {
+  PENDING
+  ACTIVE
+  PAUSED
+  CANCELLED
+  FAILED
 }
