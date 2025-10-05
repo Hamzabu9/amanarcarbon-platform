@@ -1,0 +1,449 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// User Management
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  name          String?
+  image         String?
+  emailVerified DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // Authentication
+  accounts      Account[]
+  sessions      Session[]
+
+  // User Profile
+  profile       UserProfile?
+  organizations OrganizationMember[]
+  projects      CarbonProject[]
+  transactions  Transaction[]
+  impact        UserImpact[]
+  notifications Notification[]
+
+  // Role-based access
+  role          UserRole  @default(INDIVIDUAL)
+
+  @@map("users")
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@map("accounts")
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+  @@map("verification_tokens")
+}
+
+// User Profile & Preferences
+model UserProfile {
+  id                String   @id @default(cuid())
+  userId            String   @unique
+  firstName         String?
+  lastName          String?
+  bio               String?
+  location          String?
+  website           String?
+  avatar            String?
+  phone             String?
+  dateOfBirth       DateTime?
+  preferences       Json?
+  carbonFootprint   Float?   @default(0)
+  totalOffset       Float?   @default(0)
+  isVerified        Boolean  @default(false)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_profiles")
+}
+
+// Organization Management
+model Organization {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  website     String?
+  logo        String?
+  type        OrganizationType @default(BUSINESS)
+  size        OrganizationSize @default(SMALL)
+  industry    String?
+  location    String?
+  isVerified  Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  members     OrganizationMember[]
+  projects    CarbonProject[]
+  transactions Transaction[]
+
+  @@map("organizations")
+}
+
+model OrganizationMember {
+  id             String           @id @default(cuid())
+  organizationId String
+  userId         String
+  role           OrganizationRole @default(MEMBER)
+  joinedAt       DateTime         @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, userId])
+  @@map("organization_members")
+}
+
+// Carbon Projects & Marketplace
+model CarbonProject {
+  id                String            @id @default(cuid())
+  title             String
+  description       String            @db.Text
+  location          String
+  country          String
+  projectType      ProjectType
+  standard         VerificationStandard
+  methodology      String
+  estimatedCredits Float
+  pricePerCredit   Float
+  status           ProjectStatus     @default(DRAFT)
+  isActive         Boolean           @default(true)
+  images           String[]
+  documents        String[]
+  coordinates      Json?
+  startDate        DateTime
+  endDate          DateTime?
+  verificationDate DateTime?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+
+  // Relationships
+  ownerId          String
+  organizationId  String?
+  owner            User              @relation(fields: [ownerId], references: [id])
+  organization     Organization?     @relation(fields: [organizationId], references: [id])
+  
+  credits          CarbonCredit[]
+  reviews          ProjectReview[]
+  transactions     Transaction[]
+  verifications    ProjectVerification[]
+
+  @@map("carbon_projects")
+}
+
+model CarbonCredit {
+  id                String        @id @default(cuid())
+  projectId         String
+  serialNumber      String        @unique
+  vintage           Int
+  quantity          Float
+  price             Float
+  status            CreditStatus  @default(AVAILABLE)
+  retirementDate    DateTime?
+  retirementReason  String?
+  buyerId           String?
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  project           CarbonProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  buyer             User?         @relation(fields: [buyerId], references: [id])
+
+  @@map("carbon_credits")
+}
+
+model ProjectReview {
+  id        String   @id @default(cuid())
+  projectId String
+  userId    String
+  rating    Int      @db.SmallInt
+  comment   String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  project CarbonProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user    User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, userId])
+  @@map("project_reviews")
+}
+
+model ProjectVerification {
+  id          String   @id @default(cuid())
+  projectId   String
+  verifierId  String
+  status      VerificationStatus @default(PENDING)
+  comments    String?
+  documents   String[]
+  verifiedAt  DateTime?
+  createdAt   DateTime @default(now())
+
+  project CarbonProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@map("project_verifications")
+}
+
+// Transactions & Payments
+model Transaction {
+  id                String            @id @default(cuid())
+  userId            String
+  organizationId    String?
+  projectId         String
+  creditId          String?
+  amount            Float
+  pricePerCredit    Float
+  totalAmount       Float
+  currency          String            @default("USD")
+  status            TransactionStatus @default(PENDING)
+  paymentMethod     String?
+  stripePaymentId  String?
+  receipt           String?
+  notes             String?
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+
+  user         User           @relation(fields: [userId], references: [id])
+  organization Organization? @relation(fields: [organizationId], references: [id])
+  project      CarbonProject  @relation(fields: [projectId], references: [id])
+
+  @@map("transactions")
+}
+
+// Climate Risk Intelligence
+model ClimateRiskAssessment {
+  id              String   @id @default(cuid())
+  location        String
+  coordinates     Json
+  riskScore       Float
+  riskCategory    RiskCategory
+  factors         Json
+  recommendations String?
+  dataSource      String
+  assessedAt      DateTime @default(now())
+  expiresAt       DateTime
+
+  @@map("climate_risk_assessments")
+}
+
+model SatelliteData {
+  id          String   @id @default(cuid())
+  location    String
+  coordinates Json
+  dataType    String
+  value       Float
+  unit        String
+  source      String
+  timestamp   DateTime @default(now())
+
+  @@map("satellite_data")
+}
+
+// Impact & Engagement
+model UserImpact {
+  id              String   @id @default(cuid())
+  userId          String
+  impactType      ImpactType
+  value           Float
+  unit            String
+  description     String?
+  projectId       String?
+  verified        Boolean  @default(false)
+  createdAt       DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_impacts")
+}
+
+model CommunityPost {
+  id          String   @id @default(cuid())
+  userId      String
+  title       String
+  content     String    @db.Text
+  type        PostType  @default(GENERAL)
+  tags        String[]
+  likes       Int       @default(0)
+  comments    Int       @default(0)
+  isPinned    Boolean   @default(false)
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@map("community_posts")
+}
+
+model Notification {
+  id        String           @id @default(cuid())
+  userId    String
+  type      NotificationType
+  title     String
+  message   String
+  data      Json?
+  read      Boolean          @default(false)
+  createdAt DateTime         @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("notifications")
+}
+
+// Enums
+enum UserRole {
+  INDIVIDUAL
+  BUSINESS
+  ENTERPRISE
+  ADMIN
+}
+
+enum OrganizationType {
+  BUSINESS
+  NGO
+  GOVERNMENT
+  EDUCATIONAL
+}
+
+enum OrganizationSize {
+  SMALL
+  MEDIUM
+  LARGE
+  ENTERPRISE
+}
+
+enum OrganizationRole {
+  OWNER
+  ADMIN
+  MEMBER
+  VIEWER
+}
+
+enum ProjectType {
+  REFORESTATION
+  RENEWABLE_ENERGY
+  ENERGY_EFFICIENCY
+  WASTE_MANAGEMENT
+  CARBON_CAPTURE
+  BLUE_CARBON
+  AGRICULTURE
+  OTHER
+}
+
+enum VerificationStandard {
+  VCS
+  GOLD_STANDARD
+  CARBON_CREDIT_STANDARD
+  ISO_14064
+  OTHER
+}
+
+enum ProjectStatus {
+  DRAFT
+  SUBMITTED
+  UNDER_REVIEW
+  VERIFIED
+  REJECTED
+  ACTIVE
+  COMPLETED
+  SUSPENDED
+}
+
+enum CreditStatus {
+  AVAILABLE
+  RESERVED
+  SOLD
+  RETIRED
+  CANCELLED
+}
+
+enum VerificationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  REQUIRES_REVISION
+}
+
+enum TransactionStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  CANCELLED
+  REFUNDED
+}
+
+enum RiskCategory {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum ImpactType {
+  CARBON_OFFSET
+  EMISSION_REDUCTION
+  RENEWABLE_ENERGY
+  REFORESTATION
+  CONSERVATION
+  EDUCATION
+  OTHER
+}
+
+enum PostType {
+  GENERAL
+  PROJECT_UPDATE
+  SUCCESS_STORY
+  QUESTION
+  ANNOUNCEMENT
+  EVENT
+}
+
+enum NotificationType {
+  PROJECT_UPDATE
+  TRANSACTION_UPDATE
+  VERIFICATION_UPDATE
+  COMMUNITY_UPDATE
+  SYSTEM_ANNOUNCEMENT
+  PAYMENT_RECEIPT
+  IMPACT_MILESTONE
+}
